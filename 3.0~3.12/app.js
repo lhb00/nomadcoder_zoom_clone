@@ -10,6 +10,8 @@ call.hidden = true;
 let myStream;
 let muted = false;
 let cameraOff = false;
+let roomName;
+let myPeerConnection; // getMedia 함수를 불렀을 때와 똑같이 stream을 공유하기 위하여 선언함
 
 async function getCameras() {
     try{
@@ -81,6 +83,12 @@ function handleCameraClick() {
 
 async function handleCameraChange() {
     await getMedia(cameraSelect.value);
+    if(myPeerConnection) {
+        const videoTrack = myStream.getVideoTracks()[0];
+        const videoSender = myPeerConnection.getSenders().find(sender => sender.track.kind === "video"); // peer에게 줄 stream을 업데이트함.
+        console.log(videoSender);
+        videoSender.replaceTrack(videoTrack);
+    }
 }
 
 muteBtn.addEventListener("click", handleMuteClick);
@@ -92,16 +100,18 @@ cameraSelect.addEventListener("input", handleCameraChange);
 const welcome = document.getElementById("welcome");
 const welcomeForm = welcome.querySelector("form");
 
-function startMedia() {
+async function initCall() {
     welcome.hidden = true;
     call.hidden = false;
-    getMedia();
+    await getMedia();
+    makeConnection();
 }
 
-function handleWelcomeSubmit(event) {
+async function handleWelcomeSubmit(event) {
     event.preventDefault();
     const input = welcomeForm.querySelector("input");
-    socket.emit("join_room", input.value, startMedia);
+    await initCall(); // WebSocket들의 속도가 media를 가져오는 속도, 연결을 생성하는 속도보다 빠르므로 함수를 먼저 불러오고 emit으로 서버에 전달
+    socket.emit("join_room", input.value);
     roomName = input.value;
     input.value = "";
 
@@ -111,6 +121,52 @@ welcomeForm.addEventListener("submit", handleWelcomeSubmit);
 
 // Socket Code
 
-socket.on("welcome", () => {
-    console.log("somebody joined")
+socket.on("welcome", async () => {
+    const offer = await myPeerConnection.createOffer();
+    myPeerConnection.setLocalDescription(offer); // offer로 연결 구성, // 처음 접속한 브라우저(내 경우는 크롬)에만 적용되는 코드임
+    console.log("sent the offer");
+    socket.emit("offer", offer, roomName); // Peer B(내 경우는 FireFox)로 offer를 보냄
+}); // Peer B가 참가하고 그게 서버에 전달되면, 서버가 Peer A에게 알려주고, welcome event를 발생시킴. 그리고 Peer A는 offer를 전달하고,
+
+socket.on("offer", async (offer) => {
+    console.log("received the offer");
+    myPeerConnection.setRemoteDescription(offer); // Peer B는 offer를 받음, 그런데 아직 myPeerConnection이 존재하지 않음. 왜냐면 이 일이 너무 빨리 일어나기 때문.
+    const answer = await myPeerConnection.createAnswer();
+    myPeerConnection.setLocalDescription(answer);
+    socket.emit("answer", answer, roomName); // Peer B가 answer로 응답하는 것이므로 Answer를 서버로 보내야함.
+    console.log("sent the answer");
+    // 그래서 handleWelcomeSubmit 함수의 순서를 약간 변경함. 이제 myPeerConnection은 존재함.
+}) // Peer B(내 경우는 FireFox)에서 실행되는 함수
+
+socket.on("answer",answer => {
+    console.log("received the answer");
+    myPeerConnection.setRemoteDescription(answer); // answer를 받아서 Description을 remote함
+}); // Peer A에서 실행되는 코드
+
+socket.on("ice", ice => {
+    console.log("received the candidate");
+    myPeerConnection.addIceCandidate(ice);
 })
+
+// RTC Code
+// 실제 연결을 만드는 함수
+
+function makeConnection() {
+    myPeerConnection = new RTCPeerConnection(); // peer-to-peer connection 생성
+    myPeerConnection.addEventListener("icecandidate", handleIce);
+    myPeerConnection.addEventListener("addstream", handleAddStream);
+    myStream.getTracks().forEach(track => myPeerConnection.addTrack(track, myStream)); // 카메라, 마이크 데이터 stream을 연결 안에 집어넣음
+    // Peer-to-Peer 커넥션을 만들 때 peer 연결에 track도 추가하므로,
+}
+
+function handleIce(data) {
+    console.log("sent candidate");
+    socket.emit("ice", data.candidate, roomName);
+} // Peer A와 Peer B가 candidate를 주고 받음.
+
+function handleAddStream(data) {
+    const peerFace = document.getElementById("peerFace")
+    console.log("Peer's Stream", data.stream);
+    peerFace.srcObject = data.stream;
+} // Peer B의 stream을 받아 화면에 출력함.
+// Peer A에서 화면을 끄면, Peer B에서 표시되는 Peer A의 화면도 꺼짐: remote stream이므로

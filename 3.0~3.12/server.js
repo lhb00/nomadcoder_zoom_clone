@@ -16,12 +16,20 @@ const httpServer = http.createServer(app);
 const wsServer = SocketIO(httpServer);
 
 wsServer.on("connection", socket =>  {
-    socket.on("join_room", (roomName,done) => {
+    socket.on("join_room", (roomName) => {
         socket.join(roomName);
-        done();
         socket.to(roomName).emit("welcome");
+    });
+    socket.on("offer", (offer, roomName) => {
+        socket.to(roomName).emit("offer", offer);
+    });
+    socket.on("answer", (answer, roomName) => {
+        socket.to(roomName).emit("answer", answer, roomName);
+    });
+    socket.on("ice", (ice, roomName) => {
+        socket.to(roomName).emit("ice", ice);
     })
-})
+});
 
 httpServer.listen(3000, handleListen); 
 //별 다른건 없지만 서버는 http, WebSocket 2개 모두를 이해할 수 있게 되었다.
