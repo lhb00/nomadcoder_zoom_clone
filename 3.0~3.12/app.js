@@ -12,6 +12,7 @@ let muted = false;
 let cameraOff = false;
 let roomName;
 let myPeerConnection; // getMedia 함수를 불렀을 때와 똑같이 stream을 공유하기 위하여 선언함
+let myDataChannel;
 
 async function getCameras() {
     try{
@@ -122,6 +123,9 @@ welcomeForm.addEventListener("submit", handleWelcomeSubmit);
 // Socket Code
 
 socket.on("welcome", async () => {
+    myDataChannel = myPeerConnection.createDataChannel("chat"); // offer를 만들기 전에 Data Channel을 만듦.
+    myDataChannel.addEventListener("message", (event) => console.log(event.data));
+    console.log("made data channel");
     const offer = await myPeerConnection.createOffer();
     myPeerConnection.setLocalDescription(offer); // offer로 연결 구성, // 처음 접속한 브라우저(내 경우는 크롬)에만 적용되는 코드임
     console.log("sent the offer");
@@ -129,6 +133,11 @@ socket.on("welcome", async () => {
 }); // Peer B가 참가하고 그게 서버에 전달되면, 서버가 Peer A에게 알려주고, welcome event를 발생시킴. 그리고 Peer A는 offer를 전달하고,
 
 socket.on("offer", async (offer) => {
+    myPeerConnection.addEventListener("datachannel", (event) => {
+        myDataChannel = event.channel;
+        myDataChannel.addEventListener("message", (event) => console.log(event.data));
+    }); // 다른 peer에선 당연히 Data Channel을 만들 필요가 없음! 그래서 Data Channel을 받을거임.
+    // 새로운 Data Channel이 있을 때 eventListener를 추가하고, Data Channel을 저장하고, 그 Data Channel에 eventlistener 추가
     console.log("received the offer");
     myPeerConnection.setRemoteDescription(offer); // Peer B는 offer를 받음, 그런데 아직 myPeerConnection이 존재하지 않음. 왜냐면 이 일이 너무 빨리 일어나기 때문.
     const answer = await myPeerConnection.createAnswer();
@@ -152,7 +161,20 @@ socket.on("ice", ice => {
 // 실제 연결을 만드는 함수
 
 function makeConnection() {
-    myPeerConnection = new RTCPeerConnection(); // peer-to-peer connection 생성
+    myPeerConnection = new RTCPeerConnection({
+        iceServers: [
+            {
+              urls: [
+                "stun:stun.l.google.com:19302",
+                "stun:stun1.l.google.com:19302",
+                "stun:stun2.l.google.com:19302",
+                "stun:stun3.l.google.com:19302",
+                "stun:stun4.l.google.com:19302",
+              ],
+            },
+          ], // 비디오를 주 받기 위해서 STUN 서버를 활용하는게 아니라, 공용주소를 알아내기 위해서 STUN 서버를 활용하는 것이다.
+          // 테스트용으로 구글에서 무료로 제공하는 서버를 이용해보았다. 당연히 내가 직접 개발하는 앱에선 STUN 서버를 직접 구축해야한다. 그럴말한 실력을 갖추고 싶다 ㅠㅠ
+    }); // peer-to-peer connection 생성
     myPeerConnection.addEventListener("icecandidate", handleIce);
     myPeerConnection.addEventListener("addstream", handleAddStream);
     myStream.getTracks().forEach(track => myPeerConnection.addTrack(track, myStream)); // 카메라, 마이크 데이터 stream을 연결 안에 집어넣음
