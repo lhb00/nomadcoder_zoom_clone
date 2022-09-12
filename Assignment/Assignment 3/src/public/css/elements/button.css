@@ -1,0 +1,9 @@
+button,
+input[type="submit"] {
+  border: 1px solid #9bbbd4;
+  border-radius: 8px;
+  background-color: #fef01b;
+  font-size: 1rem;
+  color: #3a1d1d;
+  cursor: pointer;
+}
