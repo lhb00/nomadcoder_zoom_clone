@@ -16,3 +16,5 @@ NodeJS와 Javascript를 통한 줌 클론 앱 만들기
 09.05 ~ 09.11 챌린지 진행 완료.
 </br>
 09.19 챌린지 수료. 우수 졸업생으로 선정.
+</br>
+https://d2p6cq.sse.codesandbox.io/ <- 졸업 작품은 이 곳에서 확인이 가능합니다.
